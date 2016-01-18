@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="e7289130-81c0-471e-8db9-c2f9d05ffebf" name="proppe.me/rg" url="http://proppe.me">
+        <fileTransfer host="ftp.proppe.me" port="21098" rootFolder="/home/propavvb" accessType="SFTP" password="dfcbdf9edf99dfc9dfefdfc3df9ddff8dff3df8bdf93dfdcdff0" username="propavvb">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
