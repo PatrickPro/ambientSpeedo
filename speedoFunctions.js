@@ -88,8 +88,11 @@ var distanceBarImg_WIDTH = 2;
 var speedLimitSignVisible = false;
 var rowheightOffset = 0;
 
+var currentMessage = new receivedDataPacket();
+var receivedMessagesList = new DoublyList();
+var pastPerformanceTraces = new DoublyList();
 
-var receivedData = new DoublyList();
+var isRealTime = false;
 
 $(document).ready(function () {
 
@@ -128,19 +131,19 @@ $(document).ready(function () {
 
             gasPedal = 0.0;
             brakePedal = 0.0;
-            setDrawingColor(true);
+            setDrawingColor(true, currentMessage);
         }
         else if (event.which == 114) {
             //R
             gasPedal = 0.0;
             brakePedal = 1.0;
-            setDrawingColor(true);
+            setDrawingColor(true, currentMessage);
 
         } else if (event.which == 121) {
             //Y
             gasPedal = 1.0;
             brakePedal = 0.0;
-            setDrawingColor(true);
+            setDrawingColor(true, currentMessage);
         }
 
         updateSpeedo();
@@ -192,53 +195,57 @@ function openWebsocket(ip, port) {
         //0.0
         if (msg.length == 6) {
 
-            currentSpeed = msg[0];
-            currentSpeedLimit = msg[1];
-            nextSpeedLimit = msg[2];
-            currentDistance = msg[3];
-            gasPedal = msg[4];
-            brakePedal = msg[5];
+            if (isRealTime == false) {
+                removeTrace(); // if replayed and server starts again, clean up
+            }
+            currentMessage.currentSpeed = msg[0];
+            currentMessage.currentSpeedLimit = msg[1];
+            currentMessage.nextSpeedLimit = msg[2];
+            currentMessage.currentDistance = msg[3];
+            currentMessage.gasPedal = msg[4];
+            currentMessage.brakePedal = msg[5];
+            currentMessage.realtime = true;
+            currentMessage.time = Date.now();
 
-            handleNewData(currentSpeed, currentDistance);
+            handleNewData(currentMessage);
 
-        } else if (msg.length == 1) {
-
+        } else if (msg.length == 2) {
+            if (msg[0] == "replay") {
+                replayMessages(pastPerformanceTraces, 100, msg[1]);
+            } else {
+                console.log("Command not recognized: " + msg[0]);
+            }
+        }
+        else if (msg.length == 1) {
+            console.log(msg[0] + " command received");
             if (msg[0] == "dump") {
-                dumpReceivedData(receivedData);
+                dumpReceivedData(receivedMessagesList);
             } else if (msg[0] == "replay") {
-                replayMessages(receivedData, 250);
+                replayAllMessages(pastPerformanceTraces, 100);
             } else {
 
                 console.log("Command not recognized: " + msg[0]);
             }
-
-            console.log(msg[0]);
-
-
         } else {
             console.log("Message length mismatch! msg: " + msg);
         }
         var debugInfo = document.getElementById("debugInfo");
-        debugInfo.innerHTML = "currentSpeed: " + currentSpeed + " - currentDistance: " + currentDistance + " - lastDistance: " + lastDistanceValue + " - currentSpeedLimit: " + currentSpeedLimit + " - nextSpeedLimit: " + nextSpeedLimit + " - gasPedal: " + gasPedal + " - brakePedal: " + brakePedal + " - IP: " + wsUrl;
+        debugInfo.innerHTML = "currentSpeed: " + currentMessage.currentSpeed + " - currentDistance: " + currentMessage.currentDistance + " - lastDistance: " + currentMessage.lastDistanceValue + " - currentSpeedLimit: " + currentMessage.currentSpeedLimit + " - nextSpeedLimit: " + currentMessage.nextSpeedLimit + " - gasPedal: " + currentMessage.gasPedal + " - brakePedal: " + currentMessage.brakePedal + " - IP: " + wsUrl;
 
     };
-
     ws.onclose = function () {
         console.log("WS closed");
         ws = new WebSocket("ws://" + wsUrl + ":" + wsPort + "/");
-
     };
 
     ws.onopen = function () {
         console.log("WS connected (" + wsUrl + ":" + wsPort + ")");
         //setTimeout(setNewSpeed(0), 800); // fix that enables browser to load webfont, otherwise it won't display the font initially.
         //setTimeout(updateSpeedo, 800);
-
     };
     ws.onerror = function (event) {
         console.log("WS error: " + event);
     }
-
 }
 
 function init() {
@@ -356,7 +363,6 @@ function setupCanvas() {
     distanceCarImg_R.regX = distanceCarImg_WIDTH / 2;
     distanceCarImg_R.alpha = 0;
 
-
     distanceBarImg_Y = new createjs.Bitmap("yellowBar.png");
     distanceBarImg_Y.regX = distanceBarImg_WIDTH / 2;
     distanceBarImg_Y.alpha = 0;
@@ -367,9 +373,6 @@ function setupCanvas() {
     distanceBarImg_R.regX = distanceBarImg_WIDTH / 2;
     distanceBarImg_R.alpha = 0;
 
-
-    //traceLine.regY = LINETHICKNESS / 2;
-    //idealLine.regY = LINETHICKNESS / 2 / 2;
 
     setScalingFactors("distance");
 
@@ -382,11 +385,12 @@ function setupCanvas() {
     addChildToStage(distanceBarImg_R);
 
 }
-function setDrawingColor(visibility) {
+function setDrawingColor(visibility, message) {
 
 
-    if (gasPedal == 1.0 && brakePedal == 0.0) {
+    if (message.gasPedal == 1.0 && message.brakePedal == 0.0) {
         currentTraceColor = yellow;
+        //currentMessage.color = yellow;
 
         if (visibility) {
             distanceCarImg_Y.alpha = 1;
@@ -408,8 +412,9 @@ function setDrawingColor(visibility) {
         }
 
 
-    } else if (gasPedal == 0.0 && brakePedal == 1.0) {
+    } else if (message.gasPedal == 0.0 && message.brakePedal == 1.0) {
         currentTraceColor = red;
+        //currentMessage.color = red;
         if (visibility) {
             distanceCarImg_Y.alpha = 0;
             distanceCarImg_R.alpha = 1;
@@ -430,6 +435,7 @@ function setDrawingColor(visibility) {
 
     } else {
         currentTraceColor = blue;
+        //currentMessage.color = blue;
         if (visibility) {
             distanceCarImg_Y.alpha = 0;
             distanceCarImg_R.alpha = 0;
@@ -451,7 +457,6 @@ function setDrawingColor(visibility) {
     }
 
 }
-
 function addChildToStage(child) {
     zIndex++;
     stage.addChild(child);
@@ -459,13 +464,13 @@ function addChildToStage(child) {
 }
 function removeTrace() {
     stage.removeAllChildren();
-    currentSpeed = 0;
-    currentDistance = 310;
+    currentSpeed = currentMessage.currentSpeed;
+    currentDistance = currentMessage.currentDistance;
     lastDistanceValue = 99999;
-    currentSpeedLimit = 80;
-    nextSpeedLimit = 60;
-    gasPedal = 0;
-    brakePedal = 0;
+    currentSpeedLimit = currentMessage.currentSpeedLimit;
+    nextSpeedLimit = currentMessage.nextSpeedLimit;
+    gasPedal = currentMessage.gasPedal;
+    brakePedal = currentMessage.brakePedal;
     zIndex = 0;
     idealLine = new createjs.Shape();
     addChildToStage(speedRect);
@@ -474,59 +479,68 @@ function removeTrace() {
     addChildToStage(distanceBarImg_Y);
     addChildToStage(distanceBarImg_B);
     addChildToStage(distanceBarImg_R);
-
     addChildToStage(distanceCarImg_Y);
     addChildToStage(distanceCarImg_B);
     addChildToStage(distanceCarImg_R);
     traceLine.graphics.moveTo(distanceBarImg_Y.x, speedRect.y);
     updateSpeedo();
 }
-
-function setNewDistance(value) {
-
-    if (lastDistanceValue <= 0 && currentDistance > 0) {
-        removeTrace();
-    }
+var isLastMessage = false;
+function setNewDistance(message) {
 
 
     var visible = false;
 
 
-    if (value <= MAXDISTANCE + DISTANCETOSHOWINDICATOR && value >= 0) {
+    if (message.currentDistance <= MAXDISTANCE + DISTANCETOSHOWINDICATOR && message.currentDistance >= 0) {
         if (!speedLimitSignVisible) {
-            drawAmbientSpeedLimit(nextSpeedLimit);
-            drawNewSpeedLimit(nextSpeedLimit);
+            drawAmbientSpeedLimit(message.nextSpeedLimit);
+            drawNewSpeedLimit(message.nextSpeedLimit);
             speedLimitSignVisible = true;
         }
-        if (value <= MAXDISTANCE && value >= 0) {
+        if (message.currentDistance <= MAXDISTANCE && message.currentDistance >= 0) {
             visible = true; // make only visible if approaching new sign
-            if (speedWhenChallengeStarts == -1)
-                speedWhenChallengeStarts = currentSpeed;
+            if (speedWhenChallengeStarts == -1) {
+                message.speedWhenChallengeOn = message.currentSpeed;
+                speedWhenChallengeStarts = message.currentSpeed;
+            }
         }
-        if (value == 0) {
+        if (message.currentDistance == 0) {
+            // FIXME Test if server actually sends 0 here
+
+            // TODO Be aware that the drawTraceLineSegment method needs to be called before renewing the Doublylist
+
+            isLastMessage = true;
+            message.speedWhenChallengeOff = message.currentSpeed;
             removeSpeedLimitSign();
             removeDistanceBar();
             removeDistanceCar();
-            drawidealLine();
+            setTimeout(drawidealLine(message), 100);
+            if (message.realtime)
+                setTimeout(removeTrace, 3000);
             speedLimitSignVisible = false;
-
-
-            // TODO;
-            // timer which gets rid of ideal and trace
 
         }
 
     }
 
-
-    var newDistanceBarPos = modulate(value, [MAXDISTANCE, 0], [0, CANVAS_WIDTH], true);
+    var newDistanceBarPos = modulate(message.currentDistance, [MAXDISTANCE, 0], [0, CANVAS_WIDTH], true);
 
     setCarPos(newDistanceBarPos, (speedRect.y - 18 * 2));
     setBarPos(newDistanceBarPos, 0);
 
-    setDrawingColor(visible);
+    setDrawingColor(visible, message);
     updateSpeedo();
-    drawTraceLine(value, currentTraceColor);
+    if (!message.realtime) {
+        //currentTraceColor = message.color;
+    }
+    drawTraceLineSegment(message, currentTraceColor);
+    if (isLastMessage == true) {
+
+        isLastMessage = false;
+        pastPerformanceTraces.add(receivedMessagesList);
+        receivedMessagesList = new DoublyList();
+    }
 
 
 }
@@ -553,53 +567,40 @@ function updateSpeedo() {
     stage.update();
 }
 
-function drawidealLine() {
+function drawidealLine(message) {
 
-
+    idealLine.graphics.clear();
     idealLine.graphics.beginStroke(green);
     idealLine.graphics.setStrokeStyle(LINETHICKNESS / 2);
 
 
-    var modulatedCurrentSpeedLimitY = modulate(speedWhenChallengeStarts, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
+    var modulatedCurrentSpeedLimitY = modulate(message.speedWhenChallengeOn, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
     var currentSL_y = CANVAS_HEIGHT - modulatedCurrentSpeedLimitY - LINETHICKNESS / 3;
     idealLine.graphics.moveTo(0, currentSL_y);
 
 
-    var modulatedNextSpeedLimitY = modulate(nextSpeedLimit, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
+    var modulatedNextSpeedLimitY = modulate(message.nextSpeedLimit, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
     var nextSL_y = CANVAS_HEIGHT - modulatedNextSpeedLimitY - LINETHICKNESS / 3;
     idealLine.graphics.lineTo(CANVAS_WIDTH, nextSL_y);
 
     addChildToStage(idealLine);
     updateSpeedo();
-    setNewSpeed(currentSpeed); // make sure BG is red if too fast!
+    setSpeedoRectColor(currentMessage); // make sure BG is red if too fast!
     speedWhenChallengeStarts = -1;
 
 }
 
-function drawTraceLine(distance, color) {
+function drawTraceLineSegment(message, color) {
+    var distance = message.currentDistance;
     distance = parseInt(distance);
-
 
     if (distance <= MAXDISTANCE && lastDistanceValue > distance) {
 
-        var newPacket = new receivedDataPacket();
-
-        newPacket.currentDistance = distance;
-        newPacket.currentSpeed = currentSpeed;
-        newPacket.currentSpeedLimit = currentSpeedLimit;
-        newPacket.nextSpeedLimit = nextSpeedLimit;
-        newPacket.gasPedal = gasPedal;
-        newPacket.brakePedal = brakePedal;
-        newPacket.time = Date.now();
-
-        receivedData.add(newPacket);
 
         if (distance == MAXDISTANCE) {
             lastDistanceBarX = distanceBarImg_Y.x;
             lastSpeedRectY = speedRect.y;
-
         } else {
-
             traceLine = new createjs.Shape();
             setScalingFactors("trace");
             traceLine.graphics.beginStroke(color);
@@ -609,59 +610,64 @@ function drawTraceLine(distance, color) {
 
             lastDistanceBarX = distanceBarImg_Y.x;
             lastSpeedRectY = speedRect.y;
-
-
         }
+
+        var storeMessage = new receivedDataPacket();
+
+        storeMessage.currentSpeed = currentMessage.currentSpeed;
+        storeMessage.currentSpeedLimit = currentMessage.currentSpeedLimit;
+        storeMessage.nextSpeedLimit = currentMessage.nextSpeedLimit;
+        storeMessage.currentDistance = currentMessage.currentDistance;
+        storeMessage.gasPedal = currentMessage.gasPedal;
+        storeMessage.brakePedal = currentMessage.brakePedal;
+        storeMessage.realtime = false;
+        storeMessage.time = currentMessage.time;
+        storeMessage.color = currentMessage.color;
+        storeMessage.speedWhenChallengeOn = currentMessage.speedWhenChallengeOn;
+        storeMessage.speedWhenChallengeOff = currentMessage.speedWhenChallengeOff;
+
+        receivedMessagesList.add(storeMessage);
+
+
     }
     lastDistanceValue = distance;
 }
 
-function drawTraceDots(value, color) {
-    value = parseInt(value);
-
-    if (value <= MAXDISTANCE && lastDistanceValue > value) {
-
-        var tmp = new createjs.Shape();
-        tmp.graphics.beginFill(color).drawCircle(distanceCarImg_Y.x, speedRect.y, 2);
-        addChildToStage(tmp);
-
-    }
-    lastDistanceValue = value;
-}
-
-function setNewSpeed(value) {
-    //value = Math.round(value);
-    var valueInt = parseInt(value);
-
-    if (valueInt > currentSpeedLimit || (currentDistance == 0 && valueInt > nextSpeedLimit)) {
+function setSpeedoRectColor(message) {
+    var currentSpeed = parseInt(message.currentSpeed);
+    if (currentSpeed > message.currentSpeedLimit || (message.currentDistance == 0 && currentSpeed > message.nextSpeedLimit)) {
         speedRect.graphics.clear().beginFill(red).rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     } else {
-
         speedRect.graphics.clear().beginFill(blue).rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
+}
+
+function setNewSpeed(message) {
+
+    var valueInt = parseInt(message.currentSpeed);
+    setSpeedoRectColor(message);
     currentSpeedText.text = valueInt;
-    var newSpeedRectPos = modulate(value, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
+    var newSpeedRectPos = modulate(message.currentSpeed, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
     speedRect.y = CANVAS_HEIGHT - newSpeedRectPos;
 
-
-    if (value < 10) {
+    if (message.currentSpeed < 10) {
         bgSpeedUnit.alpha = 0;
-    } else if (value == 10) {
+    } else if (message.currentSpeed == 10) {
         bgSpeedUnit.alpha = 0.1;
-    } else if (value == 11) {
+    } else if (message.currentSpeed == 11) {
         bgSpeedUnit.alpha = 0.2;
     }
-    else if (value == 12) {
+    else if (message.currentSpeed == 12) {
         bgSpeedUnit.alpha = 0.4;
     }
-    else if (value == 13) {
+    else if (message.currentSpeed == 13) {
         bgSpeedUnit.alpha = 0.6;
 
     }
-    else if (value == 14) {
+    else if (message.currentSpeed == 14) {
         bgSpeedUnit.alpha = 0.8;
     }
-    else if (value >= 15) {
+    else if (message.currentSpeed >= 15) {
         bgSpeedUnit.alpha = 1;
     }
 }
@@ -780,13 +786,19 @@ function removeAmbientSpeedLimit() {
 
 }
 
-function handleNewData(speed, distance) {
-    setNewSpeed(speed);
-    if (distance < 0) {
-        //currentDistance = 0;
-    }
-    setNewDistance(distance);
-    // ToDo alles uebergeben!
+function handleNewData(message) {
 
+    //if (!message.realtime) {
+    //    console.log("time: " + message.time + " - speed: " + message.currentSpeed + " - distance: " + message.currentDistance + " - gasPedal: " + message.gasPedal + " - brakePedal: " + message.brakePedal);
+    //}
+
+    isRealTime = message.realtime;
+
+    setNewSpeed(message);
+
+    //if (message.currentDistance < 0) {
+    //    //message.currentDistance= 0;
+    //}
+    setNewDistance(message);
     updateSpeedo();
 }

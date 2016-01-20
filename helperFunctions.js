@@ -11,7 +11,6 @@ function Node(value) {
 }
 
 function receivedDataPacket() {
-
     this.currentSpeed = 0;
     this.currentSpeedLimit = 0;
     this.nextSpeedLimit = 0;
@@ -19,27 +18,35 @@ function receivedDataPacket() {
     this.gasPedal = 0;
     this.brakePedal = 0;
     this.time = 0;
-    this.challengeisOn = false;
+    this.realtime = true;
     this.color = null;
-
+    this.speedWhenChallengeOn = 0;
+    this.speedWhenChallengeOff = 0;
 }
 
 
-function dumpReceivedData() {
-
-    for (i = 1; i < receivedData._length; i++) {
-        var tmp = receivedData.getDataAt(i);
+function dumpReceivedData(messageList) {
+    for (i = 1; i < messageList._length; i++) {
+        var tmp = messageList.getDataAt(i);
         console.log("time: " + tmp.time + " - speed: " + tmp.currentSpeed + " - distance: " + tmp.currentDistance + " - gasPedal: " + tmp.gasPedal + " - brakePedal: " + tmp.brakePedal);
     }
-
-
 }
 
-function replayMessages(data, replayDelay) {
-    removeTrace();
-    var tmpData = data;
-    var dataLength = data._length;
+function replayAllMessages(pastTracesList, replayDelay) {
 
+    for (var challengeNo = 1; challengeNo <= pastTracesList._length; challengeNo++) {
+        replayMessages(pastTracesList, replayDelay, challengeNo);
+        removeTrace();
+    }
+}
+
+
+
+function replayMessages(pastTracesList, replayDelay, challengeNo) {
+
+    removeTrace();
+    var messageList = pastTracesList.getDataAt(challengeNo);
+    var dataLength = messageList._length;
     var i = 1;
     var ticker = createjs.Ticker;
     ticker.setInterval(replayDelay);
@@ -49,24 +56,24 @@ function replayMessages(data, replayDelay) {
     function handleTick(event) {
         // Actions carried out each tick (aka frame)
         if (!event.paused) {
-            // Actions carried out when the Ticker is not paused.
-            var tmp = tmpData.getDataAt(i);
-            handleNewData(tmp.currentSpeed, tmp.currentDistance);
+            // Actions carried out when the ticker is not paused.
+            var data = messageList.getDataAt(i);
+            handleNewData(data);
             i++;
 
             if (i == dataLength + 1) { // remove if done with dataset
                 ticker.removeAllEventListeners("tick");
+                //setTimeout(removeTrace, 1000);
             }
         }
     }
-
-
 }
+
 
 function dumpReceivedData() {
 
-    for (i = 1; i < receivedData._length; i++) {
-        var tmp = receivedData.getDataAt(i);
+    for (i = 1; i < receivedMessagesList._length; i++) {
+        var tmp = receivedMessagesList.getDataAt(i);
         console.log("time: " + tmp.time + " - speed: " + tmp.currentSpeed + " - distance: " + tmp.currentDistance + " - gasPedal: " + tmp.gasPedal + " - brakePedal: " + tmp.brakePedal);
     }
 
@@ -90,9 +97,10 @@ function DoublyList() {
     this.tail = null;
 }
 
-DoublyList.prototype.add = function (value) {
-    var node = new Node(value);
+DoublyList.prototype.add = function (message) {
 
+
+    var node = new Node(message);
 
     if (this._length) {
         this.tail.next = node;
@@ -146,6 +154,8 @@ DoublyList.prototype.getDataAt = function (position) {
         count++;
     }
 
+    //var message = currentNode.data;
+    //console.log("currentSpeed: " + message.currentSpeed + " - currentDistance: " + message.currentDistance + " - lastDistance: " + lastDistanceValue + " - currentSpeedLimit: " + message.currentSpeedLimit + " - nextSpeedLimit: " + message.nextSpeedLimit + " - gasPedal: " + message.gasPedal + " - brakePedal: " + message.brakePedal);
     return currentNode.data;
 };
 
