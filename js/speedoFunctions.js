@@ -94,6 +94,39 @@ var pastPerformanceTraces = new DoublyList();
 
 var isRealTime = false;
 
+
+var dingSound = new Howl({
+    src: ['sounds/ding.mp3'],
+    preload: true,
+    onend: function () {
+        removeAmbientSpeedLimit();
+        // TODO fade in sign, play sound, remove after sound
+        //setTimeout(removeAmbientSpeedLimit, 800);
+    }
+});
+
+
+
+var successSound = new Howl({
+    src: ['sounds/success.mp3'],
+    preload: true,
+    onend: function () {
+        console.log('Finished!');
+    }
+});
+
+
+
+var failSound = new Howl({
+    src: ['sounds/fail.mp3'],
+    preload: true,
+    onend: function () {
+        console.log('Finished!');
+    }
+});
+
+
+
 $(document).ready(function () {
 
 
@@ -352,9 +385,9 @@ function setupCanvas() {
     currentSpeedText.text = "Connecting...";
     drawBG();
 
-    distanceCarImg_Y = new createjs.Bitmap("yellowCar.png");
-    distanceCarImg_B = new createjs.Bitmap("blueCar.png");
-    distanceCarImg_R = new createjs.Bitmap("redCar.png");
+    distanceCarImg_Y = new createjs.Bitmap("images/yellowCar.png");
+    distanceCarImg_B = new createjs.Bitmap("images/blueCar.png");
+    distanceCarImg_R = new createjs.Bitmap("images/redCar.png");
 
     distanceCarImg_Y.regX = distanceCarImg_WIDTH / 2;
     distanceCarImg_Y.alpha = 0;
@@ -363,13 +396,13 @@ function setupCanvas() {
     distanceCarImg_R.regX = distanceCarImg_WIDTH / 2;
     distanceCarImg_R.alpha = 0;
 
-    distanceBarImg_Y = new createjs.Bitmap("yellowBar.png");
+    distanceBarImg_Y = new createjs.Bitmap("images/yellowBar.png");
     distanceBarImg_Y.regX = distanceBarImg_WIDTH / 2;
     distanceBarImg_Y.alpha = 0;
-    distanceBarImg_B = new createjs.Bitmap("blueBar.png");
+    distanceBarImg_B = new createjs.Bitmap("images/blueBar.png");
     distanceBarImg_B.regX = distanceBarImg_WIDTH / 2;
     distanceBarImg_B.alpha = 0;
-    distanceBarImg_R = new createjs.Bitmap("redBar.png");
+    distanceBarImg_R = new createjs.Bitmap("images/redBar.png");
     distanceBarImg_R.regX = distanceBarImg_WIDTH / 2;
     distanceBarImg_R.alpha = 0;
 
@@ -494,6 +527,7 @@ function setNewDistance(message) {
 
     if (message.currentDistance <= MAXDISTANCE + DISTANCETOSHOWINDICATOR && message.currentDistance >= 0) {
         if (!speedLimitSignVisible) {
+            dingSound.play();
             drawAmbientSpeedLimit(message.nextSpeedLimit);
             drawNewSpeedLimit(message.nextSpeedLimit);
             speedLimitSignVisible = true;
@@ -510,6 +544,9 @@ function setNewDistance(message) {
 
             // TODO Be aware that the drawTraceLineSegment method needs to be called before renewing the Doublylist
 
+
+
+
             isLastMessage = true;
             message.speedWhenChallengeOff = message.currentSpeed;
             removeSpeedLimitSign();
@@ -519,6 +556,17 @@ function setNewDistance(message) {
             if (message.realtime)
                 setTimeout(removeTrace, 3000);
             speedLimitSignVisible = false;
+
+
+            // TODO eval performance properly with margin
+            if(message.speedWhenChallengeOff >= message.nextSpeedLimit) {
+                //fail
+                failSound.play();
+
+            } else {
+                //win
+                successSound.play();
+            }
 
         }
 
@@ -773,7 +821,7 @@ function drawAmbientSpeedLimit(speedlimit) {
     stage.addChildAt(ambientSpeedLimitText, zIndex - 1);
     stage.update();
 
-    setTimeout(removeAmbientSpeedLimit, 800);
+
 
 }
 

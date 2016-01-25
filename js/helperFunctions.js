@@ -41,7 +41,6 @@ function replayAllMessages(pastTracesList, replayDelay) {
 }
 
 
-
 function replayMessages(pastTracesList, replayDelay, challengeNo) {
 
     removeTrace();
@@ -249,3 +248,6 @@ function modulate(value, rangeA, rangeB, limit) {
     }
     return result;
 }
+
+
+
