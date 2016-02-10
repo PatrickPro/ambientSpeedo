@@ -62,7 +62,6 @@ function replayMessages(pastTracesList, replayDelay, challengeNo) {
 
             if (i == dataLength + 1) { // remove if done with dataset
                 ticker.removeAllEventListeners("tick");
-                //setTimeout(removeTrace, 1000);
             }
         }
     }
