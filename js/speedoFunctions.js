@@ -2,8 +2,10 @@
  * Created by patrickpro on 29/11/2015.
  */
 
-var isAndroid = /(android)/i.test(navigator.userAgent);
+// FIXME
+var NO_WIFI_PRESENT = true; // just for airplane mode development
 
+var isAndroid = /(android)/i.test(navigator.userAgent);
 var ws = null;
 var wsUrl = "127.0.0.1";
 var wsPort = "4080";
@@ -36,7 +38,6 @@ var grey = "#333132";
 var blue = "#0e95e6";
 var green = "#2ad880";
 var red = "#fc5454";
-var orange = "#ff8948";
 var yellow = "#c1ba79";
 var black = "#000000";
 var bgGreyDark = "#333132";
@@ -57,13 +58,7 @@ var newSpeedLimitText = new createjs.Text("", SIGNFONTSIZE_NORMAL + "px Roboto",
 var ambientSpeedLimitCircle = new createjs.Shape();
 var ambientSpeedLimitText = new createjs.Text("", SIGNFONTSIZE_AMBIENT + "px Roboto", black);
 
-var currentSpeed = 0;
-var currentDistance = 280;
 var lastDistanceValue = 99999;
-var currentSpeedLimit = 80;
-var nextSpeedLimit = 60;
-var gasPedal = 0;
-var brakePedal = 0;
 var speedWhenChallengeStarts = -1;
 
 var lastDistanceBarX = null;
@@ -80,6 +75,7 @@ var distanceBarImg_R = null;
 
 // Hardcoded for now
 var distanceCarImg_WIDTH = 63;
+var distanceCarImg_HEIGHT = 18;
 var distanceBarImg_WIDTH = 2;
 
 var speedLimitSignVisible = false;
@@ -94,7 +90,6 @@ var dingSound = new Howl({
     src: ['sounds/ding.mp3'],
     preload: true,
     onend: function () {
-        // TODO fade in sign, play sound
     }
 });
 var successSound = new Howl({
@@ -110,21 +105,27 @@ var failSound = new Howl({
     }
 });
 
-$(document).ready(function () {
-    // Automatically get middleware IP address
-    $.get('http://rg.proppe.me/ipaddress', function (newIP) {
-        if (newIP != null && ValidateIPaddress(newIP)) {
-            wsUrl = newIP;
-            console.log("Automatically set WS server IP to " + newIP);
-            currentSpeedText.text = newIP;
-            updateSpeedo();
-            openWebsocket(wsUrl, wsPort);
-        } else {
-            promptForIP();
-            openWebsocket(wsUrl, wsPort);
-        }
+
+/* This automatically gets the middleware IP address if it was uploaded correctly by the nodeJS middleware as a fall back it prompts for the IP address */
+if (!NO_WIFI_PRESENT) {
+    $(document).ready(function () {
+        $.get('http://rg.proppe.me/ipaddress', function (newIP) {
+            if (newIP != null && ValidateIPaddress(newIP)) {
+                wsUrl = newIP;
+                console.log("Automatically set WS server IP to " + newIP);
+                currentSpeedText.text = newIP;
+                updateSpeedo();
+                openWebsocket(wsUrl, wsPort);
+            } else {
+                promptForIP();
+                openWebsocket(wsUrl, wsPort);
+            }
+        });
     });
-});
+} else {
+    promptForIP();
+    openWebsocket(wsUrl, wsPort);
+}
 
 function openWebsocket(ip, port) {
     if (ws != null) {
@@ -139,26 +140,25 @@ function openWebsocket(ip, port) {
     }
     ws.onmessage = function (event) {
         var msg = event.data.split(";");
-        if (msg.length == 10) {
+        if (msg.length == 8) {
             if (isRealTime == false) {
                 removeTrace(); // if replayed and server starts again, clean up
             }
-            // check for time order
-            if (!msg[8] > currentMessage.time) {
+            // check for time order, make sure that middleware sends timestamp at THAT exact position e.g. msg[6]
+            if (!msg[6] > currentMessage.time) {
                 console.log("Old websocket msg received");
                 return;
             }
             lastDistanceToSign = currentMessage.currentDistance;
             lastSpeedLimit = currentMessage.currentSpeedLimit;
-            // server sends s...! skip first 2 array entries and last
-            currentMessage.currentSpeed = parseFloat(msg[2]);
-            currentMessage.currentSpeedLimit = parseInt(msg[3]);
-            currentMessage.nextSpeedLimit = parseInt(msg[4]);
-            currentMessage.currentDistance = parseFloat(msg[5]);
-            currentMessage.gasPedal = parseFloat(msg[6]);
-            currentMessage.brakePedal = parseFloat(msg[7]);
+            currentMessage.currentSpeed = parseFloat(msg[0]);
+            currentMessage.currentSpeedLimit = parseInt(msg[1]);
+            currentMessage.nextSpeedLimit = parseInt(msg[2]);
+            currentMessage.currentDistance = parseFloat(msg[3]);
+            currentMessage.gasPedal = parseFloat(msg[4]);
+            currentMessage.brakePedal = parseFloat(msg[5]);
             currentMessage.realtime = true;
-            currentMessage.time = parseFloat(msg[8]);
+            currentMessage.time = parseFloat(msg[6]);
 
             handleNewData(currentMessage);
         } else if (msg.length == 2) {
@@ -196,6 +196,12 @@ function openWebsocket(ip, port) {
     }
 }
 
+/*
+ Add a click event listener to the main HTML5 canvas element
+ counts the clicks and
+ a) every 5 clicks it shows debug information below speedo
+ b) every 11 clicks it prompts the user to modify the speedometer constants
+ calls setupCanvas() at the end */
 function init() {
     document.body.style.background = grey;
     document.getElementById("speedoCanvas").addEventListener("click", function () {
@@ -203,7 +209,7 @@ function init() {
         if (clickCount % 5 == 0) {
             document.getElementById("debugInfo").style.display = 'block';
             var debugInfo = document.getElementById("debugInfo");
-            debugInfo.innerHTML = "currentSpeed: " + currentSpeed + " - currentDistance: " + currentDistance + " - lastDistance: " + lastDistanceValue + " - currentSpeedLimit: " + currentSpeedLimit + " - nextSpeedLimit: " + nextSpeedLimit + " - gasPedal: " + gasPedal + " - brakePedal: " + brakePedal + " - IP: " + wsUrl;
+            debugInfo.innerHTML = "currentSpeed: " + currentMessage.currentSpeed + " - currentDistance: " + currentMessage.currentDistance + " - lastDistance: " + currentMessage.lastDistanceValue + " - currentSpeedLimit: " + currentMessage.currentSpeedLimit + " - nextSpeedLimit: " + currentMessage.nextSpeedLimit + " - gasPedal: " + currentMessage.gasPedal + " - brakePedal: " + currentMessage.brakePedal + " - IP: " + wsUrl;
         } else {
             document.getElementById("debugInfo").style.display = 'none';
         }
@@ -246,6 +252,7 @@ function init() {
     setupCanvas();
 }
 
+/* Helper function which sets the size of the car, bar or trace line */
 function setScalingFactors(mode) {
 
     if (mode == "distance") {
@@ -267,6 +274,7 @@ function setScalingFactors(mode) {
         traceLine.graphics.setStrokeStyle(LINETHICKNESS);
     }
 }
+/* init easelJS stage & add basic speedometer & all needed images */
 function setupCanvas() {
 
     stage = new createjs.Stage("speedoCanvas");
@@ -292,6 +300,10 @@ function setupCanvas() {
     distanceCarImg_R.regX = distanceCarImg_WIDTH / 2;
     distanceCarImg_R.alpha = 0;
 
+    /*
+     Note:
+     This could be replaced by an easelJS function, however it was planned to use a fancy image with an outer glow (smooth fade in/out).
+     */
     distanceBarImg_Y = new createjs.Bitmap("images/yellowBar.png");
     distanceBarImg_Y.regX = distanceBarImg_WIDTH / 2;
     distanceBarImg_Y.alpha = 0;
@@ -311,78 +323,58 @@ function setupCanvas() {
     addChildToStage(distanceBarImg_B);
     addChildToStage(distanceBarImg_R);
 }
-function setDrawingColor(visibility, message) {
 
-    if (message.gasPedal > 0.0 && message.brakePedal == 0.0) {
-        currentTraceColor = yellow;
-        //currentMessage.color = yellow;
-        if (visibility) {
+/* Sets the color of the bar, car or hides those elements */
+function setDrawingColor(visibility, message) {
+    if (!visibility) {
+        // hide elements
+        distanceCarImg_Y.alpha = 0;
+        distanceCarImg_R.alpha = 0;
+        distanceCarImg_B.alpha = 0;
+        distanceBarImg_Y.alpha = 0;
+        distanceBarImg_R.alpha = 0;
+        distanceBarImg_B.alpha = 0;
+
+    } else {
+        if (message.gasPedal > 0.0 && message.brakePedal == 0.0) {
+            currentTraceColor = yellow;
             distanceCarImg_Y.alpha = 1;
             distanceCarImg_R.alpha = 0;
             distanceCarImg_B.alpha = 0;
             distanceBarImg_Y.alpha = 1;
             distanceBarImg_R.alpha = 0;
             distanceBarImg_B.alpha = 0;
-        } else {
-            distanceCarImg_Y.alpha = 0;
-            distanceCarImg_R.alpha = 0;
-            distanceCarImg_B.alpha = 0;
-            distanceBarImg_Y.alpha = 0;
-            distanceBarImg_R.alpha = 0;
-            distanceBarImg_B.alpha = 0;
-        }
-    } else if (message.gasPedal == 0.0 && message.brakePedal > 0.0) {
-        currentTraceColor = red;
-        //currentMessage.color = red;
-        if (visibility) {
+
+        } else if (message.gasPedal == 0.0 && message.brakePedal > 0.0) {
+            currentTraceColor = red;
             distanceCarImg_Y.alpha = 0;
             distanceCarImg_R.alpha = 1;
             distanceCarImg_B.alpha = 0;
             distanceBarImg_Y.alpha = 0;
             distanceBarImg_R.alpha = 1;
             distanceBarImg_B.alpha = 0;
+
         } else {
-            distanceCarImg_Y.alpha = 0;
-            distanceCarImg_R.alpha = 0;
-            distanceCarImg_B.alpha = 0;
-            distanceBarImg_Y.alpha = 0;
-            distanceBarImg_R.alpha = 0;
-            distanceBarImg_B.alpha = 0;
-        }
-    } else {
-        currentTraceColor = blue;
-        //currentMessage.color = blue;
-        if (visibility) {
+            currentTraceColor = blue;
             distanceCarImg_Y.alpha = 0;
             distanceCarImg_R.alpha = 0;
             distanceCarImg_B.alpha = 1;
             distanceBarImg_Y.alpha = 0;
             distanceBarImg_R.alpha = 0;
             distanceBarImg_B.alpha = 1;
-        } else {
-            distanceCarImg_Y.alpha = 0;
-            distanceCarImg_R.alpha = 0;
-            distanceCarImg_B.alpha = 0;
-            distanceBarImg_Y.alpha = 0;
-            distanceBarImg_R.alpha = 0;
-            distanceBarImg_B.alpha = 0;
         }
     }
 }
+/* Adds the element as a child to the stage, keeps track of the zIndex as easelJS is missing such a functionality */
 function addChildToStage(child) {
-
     zIndex++;
     stage.addChild(child);
 }
+
+/* Resets the stage to only speedometer only */
 function removeTrace() {
     stage.removeAllChildren();
-    currentSpeed = currentMessage.currentSpeed;
-    currentDistance = currentMessage.currentDistance;
     lastDistanceValue = 99999;
-    currentSpeedLimit = currentMessage.currentSpeedLimit;
-    nextSpeedLimit = currentMessage.nextSpeedLimit;
-    gasPedal = currentMessage.gasPedal;
-    brakePedal = currentMessage.brakePedal;
     zIndex = 0;
     idealLine = new createjs.Shape();
     addChildToStage(speedRect);
@@ -398,11 +390,16 @@ function removeTrace() {
     updateSpeedo();
 }
 var isLastMessage = false;
+
+/* This is a CORE function
+ * It takes care of
+ * a) announcing a new speed limit challenge (audio and big sign)
+ * b) and calling sub functions to draw the challenge performance
+ * c) decides if car is past challenged speed limit */
 function setNewDistance(message) {
 
     var visible = false;
 
-// TODO sign fade in if within MAXDISTANCE + DISTANCETOSHOWINDICATOR; Change code below so it's only showing it after
     if (message.currentDistance <= MAXDISTANCE + DISTANCETOSHOWINDICATOR && message.currentDistance >= 0 && message.currentSpeedLimit > message.nextSpeedLimit) {
         if (!speedLimitSignVisible && message.currentDistance > 100) {
             dingSound.play();
@@ -413,7 +410,6 @@ function setNewDistance(message) {
         if (message.currentDistance <= MAXDISTANCE) {
             visible = true; // make only visible if approaching new sign
             if (speedWhenChallengeStarts == -1) {
-                //removeAmbientSpeedLimit();
                 message.speedWhenChallengeOn = message.currentSpeed;
                 speedWhenChallengeStarts = message.currentSpeed;
             }
@@ -427,8 +423,8 @@ function setNewDistance(message) {
         message.currentDistance = 0;
     }
     if (eval) {
-        // FIXME Test if server actually sends 0 here - note: it doesn't!
-        // TODO Be aware that the drawTraceLineSegment method needs to be called before renewing the Doublylist
+        // Because server does NOT necessarily send 0 here, I've introduced that dirty workaround to test if challenge is over.
+        // NOTE: Be aware that the drawTraceLineSegment method needs to be called before renewing the Doublylist
         isLastMessage = true;
         message.speedWhenChallengeOff = message.currentSpeed;
         removeSpeedLimitSign();
@@ -438,7 +434,7 @@ function setNewDistance(message) {
             setTimeout(removeTrace, TIMETOSHOWTRACES);
         speedLimitSignVisible = false;
 
-        // TODO eval performance with margin ?
+        // TODO: get rid of unnecessary parsing
         if (parseInt(message.speedWhenChallengeOff) > parseInt(message.currentSpeedLimit)) {
             // challenge failed
             failSound.play();
@@ -451,19 +447,19 @@ function setNewDistance(message) {
     if (message.currentSpeedLimit > message.nextSpeedLimit && speedLimitSignVisible == true) {
         var newDistanceBarPos = modulate(message.currentDistance, [MAXDISTANCE, 0], [0, CANVAS_WIDTH], true);
 
-        setCarPos(newDistanceBarPos, (speedRect.y - 18 * 2));
+        setCarPos(newDistanceBarPos, (speedRect.y - distanceCarImg_HEIGHT * 2));
         setBarPos(newDistanceBarPos, 0);
 
         setDrawingColor(visible, message);
         updateSpeedo();
         drawTraceLineSegment(message, currentTraceColor);
     } else {
-        // dirty fix for drawing last segment, due to rtMaps sending unexpected values
-        // same as above - might extract that into a function
+        // hack around for drawing last segment, due to rtMaps sending unexpected values
+        // main parts are same as above - could be extract into a seperate function at some point!
         if (eval) {
             var newDistanceBarPos = modulate(message.currentDistance, [MAXDISTANCE, 0], [0, CANVAS_WIDTH], true);
 
-            setCarPos(newDistanceBarPos, (speedRect.y - 18 * 2));
+            setCarPos(newDistanceBarPos, (speedRect.y - distanceCarImg_HEIGHT * 2));
             setBarPos(newDistanceBarPos, 0);
 
             setDrawingColor(visible, message);
@@ -472,8 +468,9 @@ function setNewDistance(message) {
             drawidealLine(message);
         }
         // reset car & bar to a non-visible position - quick fix ;)
-        setCarPos(5000, (speedRect.y - 18 * 2));
-        setBarPos(5000, 0);
+        // TODO: test proper fix: setDrawingColor(false, message);
+        // FIXME
+        setDrawingColor(false, message);
         updateSpeedo();
     }
     if (isLastMessage == true) {
@@ -482,7 +479,7 @@ function setNewDistance(message) {
         receivedMessagesList = new DoublyList();
     }
 }
-
+/* Moves the car image */
 function setCarPos(x, y) {
 
     distanceCarImg_Y.x = x;
@@ -492,7 +489,7 @@ function setCarPos(x, y) {
     distanceCarImg_R.x = x;
     distanceCarImg_R.y = y;
 }
-
+/* Moves the bar image */
 function setBarPos(x, y) {
 
     distanceBarImg_Y.x = x;
@@ -503,18 +500,21 @@ function setBarPos(x, y) {
     distanceBarImg_R.y = y;
 }
 
+/* Just a wrapper for easelJS's update function */
 function updateSpeedo() {
-
     stage.update();
 }
 
+/* Draws green ideal line from old speed limit to new speedlimit */
 function drawidealLine(message) {
 
+    // start from scratch every time
     idealLine.graphics.clear();
     idealLine.graphics.beginStroke(green);
     idealLine.graphics.setStrokeStyle(LINETHICKNESS / 2);
 
-    var modulatedCurrentSpeedLimitY = modulate(message.speedWhenChallengeOn, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
+    // calculate Y-Axis positions
+    var modulatedCurrentSpeedLimitY = modulate(lastSpeedLimit, [0, MAXSPEED], [2, CANVAS_HEIGHT], true);
     var currentSL_y = CANVAS_HEIGHT - modulatedCurrentSpeedLimitY - LINETHICKNESS / 3;
     idealLine.graphics.moveTo(0, currentSL_y);
 
@@ -527,7 +527,7 @@ function drawidealLine(message) {
     setSpeedoRectColor(currentMessage); // make sure BG is red if too fast!
     speedWhenChallengeStarts = -1;
 }
-
+// TODO: add comment
 function drawTraceLineSegment(message, color) {
 
     var distance = message.currentDistance;
@@ -573,6 +573,7 @@ function drawTraceLineSegment(message, color) {
     lastDistanceValue = distance;
 }
 
+/* This function makes sure the background color of the speed indicator adapts to the current speed limit */
 function setSpeedoRectColor(message) {
     var currentSpeed = parseInt(message.currentSpeed);
     if (currentSpeed > message.currentSpeedLimit) {
@@ -582,8 +583,18 @@ function setSpeedoRectColor(message) {
     }
 }
 
+/*
+ * This function sets the current speed according to the received message.
+ * This includes setting:
+ * a) the height of the speed indicator rectangle
+ * b) the speed text
+ * and c) fading in and out the speed unit text below the current shown speed text */
 function setNewSpeed(message) {
-
+    /* Note:
+     Due to the parsing as integer we have a small margin for getting the speed right:
+     if speed is 60.8km/h this will result in 60km/h being shown as the current speed.
+     This behavior is intended!
+     */
     var valueInt = parseInt(message.currentSpeed);
     setSpeedoRectColor(message);
     currentSpeedText.text = valueInt;
@@ -611,7 +622,13 @@ function setNewSpeed(message) {
         bgSpeedUnit.alpha = 1;
     }
 }
-
+/* Note:
+ * This function needs to be called before the websocket server sends commands!
+ *
+ * It makes sure the background of the speedometer is shown. This includes:
+ * a) alternating rows with light or dark grey background
+ * b) each rows text - the given speed at that height
+ * c) adding the speed unit text to the stage */
 function drawBG() {
 
     var rowHeight = (CANVAS_HEIGHT / (MAXSPEED + 0) * 10); // only full pixels can be drawn
@@ -649,6 +666,7 @@ function drawBG() {
     stage.update();
 }
 
+/* removes small speed speed limit sign on the right of screen */
 function removeSpeedLimitSign() {
 
     stage.removeChild(newSpeedLimitCircle);
@@ -656,6 +674,7 @@ function removeSpeedLimitSign() {
     stage.update();
 }
 
+/* removes distance bar image */
 function removeDistanceBar() {
 
     stage.removeChild(distanceBarImg_B);
@@ -664,6 +683,7 @@ function removeDistanceBar() {
     stage.update();
 }
 
+/* removes car image */
 function removeDistanceCar() {
 
     stage.removeChild(distanceCarImg_B);
@@ -672,6 +692,7 @@ function removeDistanceCar() {
     stage.update();
 }
 
+/* draws small speed speed limit sign on the right of screen */
 function drawNewSpeedLimit(speedlimit) {
 
     var padding = 2;
@@ -689,7 +710,7 @@ function drawNewSpeedLimit(speedlimit) {
     stage.addChildAt(newSpeedLimitText, zIndex - 1);
     stage.update();
 }
-
+/* draws big speed speed limit sign in the center of screen */
 function drawAmbientSpeedLimit(speedlimit) {
 
     var padding = 20;
@@ -708,6 +729,7 @@ function drawAmbientSpeedLimit(speedlimit) {
 
 }
 
+/* removes big speed speed limit sign in the center of screen */
 function removeAmbientSpeedLimit() {
 
     stage.removeChild(ambientSpeedLimitText);
@@ -715,6 +737,11 @@ function removeAmbientSpeedLimit() {
     stage.update();
 }
 
+/* This is called every time a new message was received and parsed
+ * it sets
+ *      a) current speed
+ *      b) current distance
+ * */
 function handleNewData(message) {
 
     isRealTime = message.realtime;
