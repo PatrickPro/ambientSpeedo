@@ -2,8 +2,7 @@
  * Created by patrickpro on 29/11/2015.
  */
 
-// FIXME
-var NO_WIFI_PRESENT = true; // just for airplane mode development
+var DISABLE_AUTO_IP_FETCHING = false; // just for airplane mode development
 
 var isAndroid = /(android)/i.test(navigator.userAgent);
 var ws = null;
@@ -107,7 +106,7 @@ var failSound = new Howl({
 
 
 /* This automatically gets the middleware IP address if it was uploaded correctly by the nodeJS middleware as a fall back it prompts for the IP address */
-if (!NO_WIFI_PRESENT) {
+if (!DISABLE_AUTO_IP_FETCHING) {
     $(document).ready(function () {
         $.get('http://rg.proppe.me/ipaddress', function (newIP) {
             if (newIP != null && ValidateIPaddress(newIP)) {
@@ -140,7 +139,7 @@ function openWebsocket(ip, port) {
     }
     ws.onmessage = function (event) {
         var msg = event.data.split(";");
-        if (msg.length == 8) {
+        if (msg.length == 8 || msg.length == 10) {
             if (isRealTime == false) {
                 removeTrace(); // if replayed and server starts again, clean up
             }
